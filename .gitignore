@@ -1,0 +1,30 @@
+# Dependencias
+node_modules/
+.pnpm-store/
+
+# Compilados
+dist/
+build/
+*.tsbuildinfo
+
+# Variables de entorno
+.env
+.env.local
+.env.*.local
+
+# Base de datos SQLite local, WAL y respaldos
+apps/backend/prisma/*.db
+apps/backend/prisma/*.db-journal
+apps/backend/prisma/*.db-wal
+apps/backend/prisma/*.db-shm
+apps/backend/backups/
+apps/backend/uploads/
+
+# Tauri / Rust
+apps/desktop/src-tauri/target/
+
+# Logs y OS
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db

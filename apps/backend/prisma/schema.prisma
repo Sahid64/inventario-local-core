@@ -1,0 +1,124 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./inventario_local.db"
+}
+
+// 1. Configuración White-Label (Para personalizar en demos)
+model AppSettings {
+  id             Int     @id @default(1)
+  companyName    String  @default("Mi Empresa S.A.")
+  taxId          String? // RFC / NIT / RUT
+  currencySymbol String  @default("$")
+  taxRate        Float   @default(0.16) // Ej. 16% IVA
+  primaryColor   String  @default("#0F172A")
+  logoPath       String?
+  updatedAt      DateTime @updatedAt
+}
+
+// 2. Usuarios y Roles Locales
+model User {
+  id           String              @id @default(uuid())
+  username     String              @unique
+  fullName     String
+  passwordHash String
+  role         String              @default("OPERATOR") // ADMIN, MANAGER, OPERATOR
+  isActive     Boolean             @default(true)
+  movements    InventoryMovement[]
+  createdAt    DateTime            @default(now())
+}
+
+// 3. Almacenes o Sucursales
+model Warehouse {
+  id          String              @id @default(uuid())
+  name        String              @unique
+  location    String?
+  isDefault   Boolean             @default(false)
+  stocks      StockLevel[]
+  movements   InventoryMovement[]
+  createdAt   DateTime            @default(now())
+}
+
+// 4. Categorías y Productos Base
+model Category {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  products    Product[]
+}
+
+model Product {
+  id          String           @id @default(uuid())
+  name        String
+  description String?
+  unit        String           @default("PZA") // PZA, KG, LT, CAJA
+  isActive    Boolean          @default(true)
+  categoryId  String?
+  category    Category?        @relation(fields: [categoryId], references: [id])
+  variants    ProductVariant[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+// 5. Variantes / SKUs (Todo producto tiene al menos 1 variante por defecto)
+model ProductVariant {
+  id            String              @id @default(uuid())
+  productId     String
+  product       Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku           String              @unique
+  barcode       String?             @unique
+  attributes    String?             // JSON string: {"color": "Negro", "talla": "M"}
+  costPrice     Float               @default(0)
+  salePrice     Float               @default(0)
+  minStock      Int                 @default(5)
+  maxStock      Int?
+  stocks        StockLevel[]
+  movements     InventoryMovement[]
+}
+
+// 6. Existencias actuales por Almacén (Tabla pivote de consulta rápida)
+model StockLevel {
+  id          String         @id @default(uuid())
+  variantId   String
+  variant     ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  warehouseId String
+  warehouse   Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  quantity    Float          @default(0)
+
+  @@unique([variantId, warehouseId])
+}
+
+// 7. Kardex (Historial inmutable de movimientos)
+model InventoryMovement {
+  id            String         @id @default(uuid())
+  type          String         // IN (Entrada), OUT (Salida), ADJUST (Ajuste), TRANSFER (Traspaso)
+  reason        String?        // Compra, Venta, Merma, Devolución, Inventario Inicial
+  quantity      Float          // Siempre positivo; el tipo define si suma o resta
+  previousStock Float
+  newStock      Float
+  unitCost      Float          @default(0)
+  referenceDoc  String?        // Folio de factura, ticket o remisión
+  notes         String?
+  variantId     String
+  variant       ProductVariant @relation(fields: [variantId], references: [id])
+  warehouseId   String
+  warehouse     Warehouse      @relation(fields: [warehouseId], references: [id])
+  userId        String
+  user          User           @relation(fields: [userId], references: [id])
+  createdAt     DateTime       @default(now())
+}
+
+// 8. Proveedores y Clientes
+model Partner {
+  id        String   @id @default(uuid())
+  type      String   // SUPPLIER, CUSTOMER, BOTH
+  name      String
+  taxId     String?
+  phone     String?
+  email     String?
+  address   String?
+  createdAt DateTime @default(now())
+}

@@ -1,0 +1,28 @@
+{
+  "name": "inventario-local-core",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sistema de Inventario Local White-Label (Monorepo: Backend SQLite + Frontend React + Desktop Tauri)",
+  "workspaces": [
+    "apps/backend",
+    "apps/frontend",
+    "packages/shared"
+  ],
+  "scripts": {
+    "dev": "concurrently -n BACK,FRONT -c blue,green \"npm --workspace=@inventario-local/backend run dev\" \"npm --workspace=@inventario-local/frontend run dev\"",
+    "dev:backend": "npm --workspace=@inventario-local/backend run dev",
+    "dev:frontend": "npm --workspace=@inventario-local/frontend run dev",
+    "build:shared": "npm --workspace=@inventario-local/shared run build",
+    "build:backend": "npm --workspace=@inventario-local/backend run build",
+    "build:frontend": "npm --workspace=@inventario-local/frontend run build",
+    "build": "npm run build:shared && npm run build:backend && npm run build:frontend",
+    "typecheck": "npm --workspace=@inventario-local/shared run typecheck && npm --workspace=@inventario-local/backend run typecheck && npm --workspace=@inventario-local/frontend run typecheck",
+    "db:generate": "npm --workspace=@inventario-local/backend run prisma:generate",
+    "db:migrate": "npm --workspace=@inventario-local/backend run prisma:migrate",
+    "db:seed": "npm --workspace=@inventario-local/backend run prisma:seed",
+    "db:setup": "npm run build:shared && npm run db:generate && npm --workspace=@inventario-local/backend exec -- prisma migrate deploy && npm run db:seed"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}

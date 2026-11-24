@@ -1,0 +1,14 @@
+{
+  "name": "@inventario-local/desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Contenedor de escritorio nativo Tauri para Sistema de Inventario Local White-Label",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0"
+  }
+}
