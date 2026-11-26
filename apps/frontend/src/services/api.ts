@@ -1,18 +1,47 @@
 import axios, { AxiosError } from 'axios';
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL?.replace(/\/$/, '') || '/api/v1';
+declare global {
+  interface Window {
+    __DESKTOP_API__?: {
+      apiUrl: string;
+      backendOrigin: string;
+      appSecret: string;
+      isDesktop: boolean;
+    };
+  }
+}
+
+function getApiBaseUrl(): string {
+  if (typeof window !== 'undefined' && window.__DESKTOP_API__?.apiUrl) {
+    return window.__DESKTOP_API__.apiUrl.replace(/\/$/, '');
+  }
+  return import.meta.env.VITE_API_URL?.replace(/\/$/, '') || '/api/v1';
+}
+
+function getAppSecret(): string {
+  if (typeof window !== 'undefined' && window.__DESKTOP_API__?.appSecret) {
+    return window.__DESKTOP_API__.appSecret;
+  }
+  return import.meta.env.VITE_APP_SECRET || '';
+}
 
 export const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: getApiBaseUrl(),
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Adjuntar token JWT guardado en localStorage
+// Adjuntar token JWT y encabezado x-app-secret (en modo escritorio)
 api.interceptors.request.use((config) => {
+  config.baseURL = getApiBaseUrl();
+
+  const secret = getAppSecret();
+  if (secret) {
+    config.headers['x-app-secret'] = secret;
+  }
+
   try {
     const raw = localStorage.getItem('inventario-local-auth');
     if (raw) {
@@ -34,7 +63,9 @@ api.interceptors.response.use(
   (error: AxiosError<{ message?: string }>) => {
     if (error.response?.status === 401 && !error.config?.url?.includes('/auth/login')) {
       localStorage.removeItem('inventario-local-auth');
-      if (window.location.pathname !== '/login') {
+      if (window.location.protocol === 'file:') {
+        window.location.hash = '#/login';
+      } else if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }
     }
@@ -60,10 +91,18 @@ export function extractApiError(error: unknown, fallback = 'Ocurrió un error in
 }
 
 export function getAssetUrl(assetPath: string | null | undefined): string {
-  if (!assetPath) return '/default-logo.svg';
-  if (assetPath.startsWith('http://') || assetPath.startsWith('https://') || assetPath.startsWith('data:')) {
+  if (!assetPath) {
+    return window.location.protocol === 'file:' ? './default-logo.svg' : '/default-logo.svg';
+  }
+  if (
+    assetPath.startsWith('http://') ||
+    assetPath.startsWith('https://') ||
+    assetPath.startsWith('data:')
+  ) {
     return assetPath;
   }
-  const origin = import.meta.env.VITE_BACKEND_ORIGIN?.replace(/\/$/, '') || '';
+  const desktopOrigin =
+    typeof window !== 'undefined' ? window.__DESKTOP_API__?.backendOrigin?.replace(/\/$/, '') : '';
+  const origin = desktopOrigin || import.meta.env.VITE_BACKEND_ORIGIN?.replace(/\/$/, '') || '';
   return `${origin}${assetPath}`;
 }

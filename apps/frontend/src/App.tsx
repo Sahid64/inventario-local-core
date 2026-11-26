@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ThemeProvider } from './components/ThemeProvider';
 import { MainLayout } from './layouts/MainLayout';
 import { CatalogPage } from './pages/CatalogPage';
@@ -20,10 +20,20 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   return <>{children}</>;
 };
 
+const RouterWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const isFileProtocol =
+    typeof window !== 'undefined' && window.location.protocol === 'file:';
+  return isFileProtocol ? (
+    <HashRouter>{children}</HashRouter>
+  ) : (
+    <BrowserRouter>{children}</BrowserRouter>
+  );
+};
+
 export const App: React.FC = () => {
   return (
     <ThemeProvider>
-      <BrowserRouter>
+      <RouterWrapper>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route
@@ -44,7 +54,7 @@ export const App: React.FC = () => {
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </BrowserRouter>
+      </RouterWrapper>
     </ThemeProvider>
   );
 };

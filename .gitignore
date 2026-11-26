@@ -20,7 +20,9 @@ apps/backend/prisma/*.db-shm
 apps/backend/backups/
 apps/backend/uploads/
 
-# Tauri / Rust
+# Desktop (Electron / Tauri)
+apps/desktop/release/
+apps/desktop/resources-bundle/
 apps/desktop/src-tauri/target/
 
 # Logs y OS

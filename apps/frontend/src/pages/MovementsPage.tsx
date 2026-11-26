@@ -4,12 +4,14 @@ import {
   ArrowUpRight,
   Barcode,
   CheckCircle2,
+  History,
   RefreshCw,
   SlidersHorizontal,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BarcodeScanner } from '../components/BarcodeScanner';
 import { Badge, Button, Card, inputClassName } from '../components/ui';
+import { useAutoSaveDraft } from '../hooks/useAutoSaveDraft';
 import { api, extractApiError } from '../services/api';
 import { useAuthStore } from '../store/useAuthStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -49,6 +51,50 @@ export const MovementsPage: React.FC = () => {
 
   const canAdjust = useAuthStore((s) => s.hasRole('ADMIN', 'MANAGER'));
   const { warehouses, activeWarehouseId } = useSettingsStore();
+
+  const draftData = useMemo(
+    () => ({
+      type,
+      variantId,
+      warehouseId,
+      quantity,
+      unitCost,
+      reason,
+      referenceDoc,
+      notes,
+    }),
+    [type, variantId, warehouseId, quantity, unitCost, reason, referenceDoc, notes]
+  );
+
+  const isFormDirty = Boolean(
+    referenceDoc.trim() || notes.trim() || Number(quantity) > 1 || (type !== 'IN')
+  );
+
+  const {
+    hasPendingDraft,
+    pendingDraftSavedAt,
+    lastSavedAt,
+    restoreDraft,
+    dismissDraft,
+    clearDraft,
+  } = useAutoSaveDraft('movements-form', draftData, {
+    enabled: true,
+    isDirty: isFormDirty,
+  });
+
+  const handleRestoreDraft = () => {
+    const saved = restoreDraft();
+    if (!saved) return;
+    setType(saved.type);
+    if (saved.variantId) setVariantId(saved.variantId);
+    if (saved.warehouseId) setWarehouseId(saved.warehouseId);
+    setQuantity(saved.quantity);
+    setUnitCost(saved.unitCost);
+    setReason(saved.reason);
+    setReferenceDoc(saved.referenceDoc);
+    setNotes(saved.notes);
+    setSuccessMsg('Borrador de movimiento restaurado correctamente.');
+  };
 
   useEffect(() => {
     if (activeWarehouseId) {
@@ -145,6 +191,7 @@ export const MovementsPage: React.FC = () => {
         notes: notes || undefined,
       });
       setSuccessMsg(`Movimiento registrado. Nuevo stock en almacén: ${data.newStock}`);
+      clearDraft();
       setQuantity('1');
       setReferenceDoc('');
       setNotes('');
@@ -179,6 +226,32 @@ export const MovementsPage: React.FC = () => {
           <span>Escáner USB activo</span>
         </div>
       </div>
+
+      {hasPendingDraft && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div className="flex items-center gap-2">
+            <History className="h-4 w-4 shrink-0 text-amber-600" />
+            <span>
+              Se encontró un borrador sin guardar
+              {pendingDraftSavedAt
+                ? ` (${new Date(pendingDraftSavedAt).toLocaleString('es-MX', {
+                    dateStyle: 'short',
+                    timeStyle: 'short',
+                  })})`
+                : ''}
+              . ¿Deseas restaurarlo?
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button type="button" size="sm" onClick={handleRestoreDraft}>
+              Restaurar borrador
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={dismissDraft}>
+              Descartar
+            </Button>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -383,6 +456,11 @@ export const MovementsPage: React.FC = () => {
               {selectedVariant
                 ? `Seleccionado: ${selectedVariant.productName} (${selectedVariant.sku})`
                 : 'Selecciona un SKU o escanea un código de barras'}
+              {lastSavedAt && (
+                <span className="ml-2 text-emerald-600">
+                  · Borrador guardado {new Date(lastSavedAt).toLocaleTimeString('es-MX')}
+                </span>
+              )}
             </p>
             <Button type="submit" disabled={submitting || !variantId || !warehouseId}>
               {submitting ? 'Registrando...' : 'Aplicar movimiento'}

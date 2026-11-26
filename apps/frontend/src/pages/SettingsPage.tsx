@@ -2,9 +2,11 @@ import type { AppSettings } from '@inventario-local/shared/types';
 import {
   CheckCircle2,
   DatabaseBackup,
+  Lock,
   Palette,
   RotateCcw,
   Save,
+  ShieldCheck,
   Upload,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -22,7 +24,15 @@ interface BackupInfo {
 const PRESET_COLORS = ['#0F172A', '#2563EB', '#059669', '#7C3AED', '#DC2626', '#EA580C'];
 
 export const SettingsPage: React.FC = () => {
-  const { settings, setSettings, fetchSettings, fetchWarehouses } = useSettingsStore();
+  const {
+    settings,
+    setSettings,
+    fetchSettings,
+    fetchWarehouses,
+    idleLockMinutes,
+    setIdleLockMinutes,
+    setLocked,
+  } = useSettingsStore();
   const isAdmin = useAuthStore((s) => s.hasRole('ADMIN'));
   const canBackup = useAuthStore((s) => s.hasRole('ADMIN', 'MANAGER'));
 
@@ -327,6 +337,60 @@ export const SettingsPage: React.FC = () => {
             </div>
           )}
         </form>
+      </Card>
+
+      {/* Seguridad Local: Bloqueo automático por inactividad */}
+      <Card className="p-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-5 w-5 text-primary" />
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">
+                Seguridad Local y Bloqueo por Inactividad
+              </h2>
+              <p className="text-xs text-slate-500">
+                Protege el equipo en mostrador o bodega exigiendo contraseña tras un periodo sin
+                actividad.
+              </p>
+            </div>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => setLocked(true)}>
+            <Lock className="h-4 w-4" />
+            Bloquear pantalla ahora
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 items-end">
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-600">
+              Minutos sin actividad antes de bloquear (0 = desactivado)
+            </label>
+            <input
+              type="number"
+              min="0"
+              max="240"
+              value={idleLockMinutes}
+              onChange={(e) => setIdleLockMinutes(Number(e.target.value))}
+              className={inputClassName}
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {[0, 5, 10, 15, 30, 60].map((mins) => (
+              <button
+                key={mins}
+                type="button"
+                onClick={() => setIdleLockMinutes(mins)}
+                className={`rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
+                  idleLockMinutes === mins
+                    ? 'bg-primary text-white'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                {mins === 0 ? 'Desactivado' : `${mins} min`}
+              </button>
+            ))}
+          </div>
+        </div>
       </Card>
 
       {/* Respaldos SQLite y Modo Demo */}

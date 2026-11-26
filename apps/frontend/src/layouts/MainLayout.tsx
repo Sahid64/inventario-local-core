@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Database,
   LayoutDashboard,
+  Lock,
   LogOut,
   Menu,
   Package,
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { IdleLockModal } from '../components/IdleLockModal';
 import { getAssetUrl } from '../services/api';
 import { useAuthStore } from '../store/useAuthStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -35,7 +37,7 @@ export const MainLayout: React.FC = () => {
 
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
-  const { settings, warehouses, activeWarehouseId, setActiveWarehouseId, fetchWarehouses } =
+  const { settings, warehouses, activeWarehouseId, setActiveWarehouseId, fetchWarehouses, setLocked } =
     useSettingsStore();
 
   useEffect(() => {
@@ -173,11 +175,19 @@ export const MainLayout: React.FC = () => {
             </div>
 
             {/* Usuario activo */}
-            <div className="flex items-center gap-3 border-l border-slate-200 pl-3">
+            <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
               <div className="hidden text-right sm:block">
                 <p className="text-xs font-semibold text-slate-800">{user?.fullName}</p>
                 <p className="text-[11px] text-slate-500">{user?.role}</p>
               </div>
+              <button
+                type="button"
+                onClick={() => setLocked(true)}
+                title="Bloquear pantalla"
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+              >
+                <Lock className="h-4 w-4" />
+              </button>
               <button
                 type="button"
                 onClick={handleLogout}
@@ -197,6 +207,9 @@ export const MainLayout: React.FC = () => {
           </div>
         </main>
       </div>
+
+      {/* Modal de bloqueo automático por inactividad */}
+      <IdleLockModal />
     </div>
   );
 };

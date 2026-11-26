@@ -6,16 +6,19 @@
   "workspaces": [
     "apps/backend",
     "apps/frontend",
+    "apps/desktop",
     "packages/shared"
   ],
   "scripts": {
     "dev": "concurrently -n BACK,FRONT -c blue,green \"npm --workspace=@inventario-local/backend run dev\" \"npm --workspace=@inventario-local/frontend run dev\"",
     "dev:backend": "npm --workspace=@inventario-local/backend run dev",
     "dev:frontend": "npm --workspace=@inventario-local/frontend run dev",
+    "dev:desktop": "npm --workspace=@inventario-local/desktop run dev",
     "build:shared": "npm --workspace=@inventario-local/shared run build",
     "build:backend": "npm --workspace=@inventario-local/backend run build",
     "build:frontend": "npm --workspace=@inventario-local/frontend run build",
     "build": "npm run build:shared && npm run build:backend && npm run build:frontend",
+    "build:desktop": "npm run build && npm --workspace=@inventario-local/desktop run build",
     "typecheck": "npm --workspace=@inventario-local/shared run typecheck && npm --workspace=@inventario-local/backend run typecheck && npm --workspace=@inventario-local/frontend run typecheck",
     "db:generate": "npm --workspace=@inventario-local/backend run prisma:generate",
     "db:migrate": "npm --workspace=@inventario-local/backend run prisma:migrate",

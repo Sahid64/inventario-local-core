@@ -3,15 +3,17 @@ import {
   Barcode,
   Edit2,
   FolderPlus,
+  History,
   Plus,
   Printer,
   Search,
   Sparkles,
   Trash2,
 } from 'lucide-react';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatMoney } from '../components/ThemeProvider';
 import { Badge, Button, Card, inputClassName, Modal } from '../components/ui';
+import { useAutoSaveDraft } from '../hooks/useAutoSaveDraft';
 import { api, extractApiError } from '../services/api';
 import { useAuthStore } from '../store/useAuthStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -69,6 +71,45 @@ export const CatalogPage: React.FC = () => {
   const canManage = useAuthStore((s) => s.hasRole('ADMIN', 'MANAGER'));
   const activeWarehouseId = useSettingsStore((s) => s.activeWarehouseId);
   const settings = useSettingsStore((s) => s.settings);
+
+  const productDraftData = useMemo(
+    () => ({
+      name,
+      description,
+      unit,
+      categoryId,
+      variants,
+    }),
+    [name, description, unit, categoryId, variants]
+  );
+
+  const isProductFormDirty = Boolean(
+    name.trim() || description.trim() || variants.some((v) => v.sku.trim() || v.barcode.trim())
+  );
+
+  const {
+    hasPendingDraft: hasCatalogDraft,
+    pendingDraftSavedAt: catalogDraftSavedAt,
+    lastSavedAt: catalogLastSavedAt,
+    restoreDraft: restoreCatalogDraft,
+    dismissDraft: dismissCatalogDraft,
+    clearDraft: clearCatalogDraft,
+  } = useAutoSaveDraft('catalog-product-form', productDraftData, {
+    enabled: productModalOpen && !editingProduct,
+    isDirty: isProductFormDirty,
+  });
+
+  const handleRestoreCatalogDraft = () => {
+    const saved = restoreCatalogDraft();
+    if (!saved) return;
+    setEditingProduct(null);
+    setName(saved.name);
+    setDescription(saved.description);
+    setUnit(saved.unit || 'PZA');
+    setCategoryId(saved.categoryId || '');
+    setVariants(saved.variants?.length ? saved.variants : [emptyVariant()]);
+    setProductModalOpen(true);
+  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -190,6 +231,7 @@ export const CatalogPage: React.FC = () => {
         }
       }
 
+      clearCatalogDraft();
       setProductModalOpen(false);
       await loadData();
     } catch (err) {
@@ -249,6 +291,32 @@ export const CatalogPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {canManage && hasCatalogDraft && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div className="flex items-center gap-2">
+            <History className="h-4 w-4 shrink-0 text-amber-600" />
+            <span>
+              Tienes un borrador de producto sin guardar
+              {catalogDraftSavedAt
+                ? ` (${new Date(catalogDraftSavedAt).toLocaleString('es-MX', {
+                    dateStyle: 'short',
+                    timeStyle: 'short',
+                  })})`
+                : ''}
+              .
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button type="button" size="sm" onClick={handleRestoreCatalogDraft}>
+              Restaurar borrador
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={dismissCatalogDraft}>
+              Descartar
+            </Button>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -614,13 +682,20 @@ export const CatalogPage: React.FC = () => {
             ))}
           </div>
 
-          <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
-            <Button type="button" variant="secondary" onClick={() => setProductModalOpen(false)}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? 'Guardando...' : 'Guardar producto'}
-            </Button>
+          <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-4">
+            <span className="text-xs text-slate-400">
+              {!editingProduct && catalogLastSavedAt
+                ? `Borrador autoguardado ${new Date(catalogLastSavedAt).toLocaleTimeString('es-MX')}`
+                : ''}
+            </span>
+            <div className="flex gap-2">
+              <Button type="button" variant="secondary" onClick={() => setProductModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? 'Guardando...' : 'Guardar producto'}
+              </Button>
+            </div>
           </div>
         </form>
       </Modal>

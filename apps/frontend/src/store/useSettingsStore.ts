@@ -18,11 +18,15 @@ interface SettingsState {
   settings: AppSettings;
   warehouses: Warehouse[];
   activeWarehouseId: string; // '' representa "Todos los almacenes"
+  idleLockMinutes: number; // 0 = desactivado
+  isLocked: boolean;
   loadingSettings: boolean;
   fetchSettings: () => Promise<void>;
   setSettings: (settings: AppSettings) => void;
   fetchWarehouses: () => Promise<void>;
   setActiveWarehouseId: (id: string) => void;
+  setIdleLockMinutes: (minutes: number) => void;
+  setLocked: (locked: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -31,6 +35,8 @@ export const useSettingsStore = create<SettingsState>()(
       settings: DEFAULT_SETTINGS,
       warehouses: [],
       activeWarehouseId: '',
+      idleLockMinutes: 15,
+      isLocked: false,
       loadingSettings: false,
 
       fetchSettings: async () => {
@@ -62,12 +68,18 @@ export const useSettingsStore = create<SettingsState>()(
       },
 
       setActiveWarehouseId: (id: string) => set({ activeWarehouseId: id }),
+
+      setIdleLockMinutes: (minutes: number) =>
+        set({ idleLockMinutes: Math.max(0, Math.min(240, Math.floor(minutes))) }),
+
+      setLocked: (locked: boolean) => set({ isLocked: locked }),
     }),
     {
       name: 'inventario-local-settings',
       partialize: (state) => ({
         settings: state.settings,
         activeWarehouseId: state.activeWarehouseId,
+        idleLockMinutes: state.idleLockMinutes,
       }),
     }
   )

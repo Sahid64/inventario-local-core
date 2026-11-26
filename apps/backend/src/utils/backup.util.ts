@@ -11,6 +11,8 @@ export interface BackupInfo {
   createdAt: string;
 }
 
+let backupIntervalHandle: NodeJS.Timeout | null = null;
+
 function buildTimestamp(): string {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -18,14 +20,34 @@ function buildTimestamp(): string {
 }
 
 /**
- * Crea una copia de seguridad consistente de `inventario_local.db` en `/backups`.
- * Ejecuta primero un checkpoint WAL para consolidar todas las transacciones en el archivo .db.
+ * Mantiene únicamente los últimos `maxFiles` respaldos en `env.BACKUPS_DIR`,
+ * eliminando los más antiguos para evitar crecimiento ilimitado en disco.
+ */
+export async function pruneOldBackups(maxFiles = env.MAX_AUTO_BACKUPS): Promise<number> {
+  const backups = await listDatabaseBackups();
+  if (backups.length <= maxFiles) return 0;
+
+  const toDelete = backups.slice(maxFiles);
+  let removed = 0;
+
+  for (const item of toDelete) {
+    try {
+      await fs.rm(item.filePath, { force: true });
+      removed += 1;
+    } catch {
+      // Continuar con el resto si un archivo está bloqueado
+    }
+  }
+
+  return removed;
+}
+
+/**
+ * Crea una copia de seguridad consistente y compactada usando `VACUUM INTO` de SQLite.
+ * Seguro incluso con transacciones activas en modo WAL. Rota automáticamente los últimos 10 respaldos.
  */
 export async function createDatabaseBackup(label?: string): Promise<BackupInfo> {
   await fs.mkdir(env.BACKUPS_DIR, { recursive: true });
-
-  // Asegurar que los cambios del WAL estén volcados al archivo principal
-  await prisma.$queryRawUnsafe('PRAGMA wal_checkpoint(TRUNCATE);');
 
   const safeLabel = label
     ? `_${label.toLowerCase().replace(/[^a-z0-9-_]/g, '').slice(0, 30)}`
@@ -43,8 +65,14 @@ export async function createDatabaseBackup(label?: string): Promise<BackupInfo> 
     );
   }
 
-  await fs.copyFile(env.DB_FILE_PATH, targetPath);
+  // SQLite VACUUM INTO requiere comillas simples escapadas y archivo destino inexistente
+  const escapedTarget = targetPath.replace(/'/g, "''");
+  await prisma.$executeRawUnsafe(`VACUUM INTO '${escapedTarget}';`);
+
   const stats = await fs.stat(targetPath);
+
+  // Rotar respaldos antiguos manteniendo los últimos N (por defecto 10)
+  await pruneOldBackups(env.MAX_AUTO_BACKUPS);
 
   return {
     filename,
@@ -55,7 +83,7 @@ export async function createDatabaseBackup(label?: string): Promise<BackupInfo> 
 }
 
 /**
- * Lista los respaldos disponibles en la carpeta `/backups` ordenados del más reciente al más antiguo.
+ * Lista los respaldos disponibles en `env.BACKUPS_DIR` ordenados del más reciente al más antiguo.
  */
 export async function listDatabaseBackups(): Promise<BackupInfo[]> {
   await fs.mkdir(env.BACKUPS_DIR, { recursive: true });
@@ -82,8 +110,8 @@ export async function listDatabaseBackups(): Promise<BackupInfo[]> {
 }
 
 /**
- * Restaura la base de datos SQLite a partir de un archivo de respaldo ubicado en `/backups`.
- * Antes de sobrescribir, genera un respaldo preventivo automático.
+ * Restaura la base de datos SQLite a partir de un archivo de respaldo ubicado en `env.BACKUPS_DIR`.
+ * Genera un respaldo preventivo automático antes de sobrescribir.
  */
 export async function restoreDatabaseBackup(filename: string): Promise<{
   restoredFrom: string;
@@ -106,7 +134,6 @@ export async function restoreDatabaseBackup(filename: string): Promise<{
   await disconnectDatabase();
 
   try {
-    // Eliminar archivos WAL/SHM antiguos para evitar corrupción al restaurar
     await fs.rm(`${env.DB_FILE_PATH}-wal`, { force: true });
     await fs.rm(`${env.DB_FILE_PATH}-shm`, { force: true });
 
@@ -119,4 +146,43 @@ export async function restoreDatabaseBackup(filename: string): Promise<{
     restoredFrom: safeName,
     safetyBackup,
   };
+}
+
+/**
+ * Ejecuta un respaldo inicial al arrancar y programa respaldos rotativos cada `intervalMinutes` (30 min por defecto).
+ */
+export async function startScheduledBackups(
+  intervalMinutes = env.BACKUP_INTERVAL_MINUTES
+): Promise<void> {
+  try {
+    const initial = await createDatabaseBackup('startup');
+    console.log(`[Backup] Respaldo automático inicial creado: ${initial.filename}`);
+  } catch (error) {
+    console.warn('[Backup] No se pudo crear el respaldo inicial:', error);
+  }
+
+  if (backupIntervalHandle) {
+    clearInterval(backupIntervalHandle);
+  }
+
+  const intervalMs = Math.max(1, intervalMinutes) * 60 * 1000;
+  backupIntervalHandle = setInterval(() => {
+    void createDatabaseBackup('auto')
+      .then((info) => {
+        console.log(`[Backup] Respaldo programado creado: ${info.filename}`);
+      })
+      .catch((error) => {
+        console.error('[Backup] Error en respaldo automático:', error);
+      });
+  }, intervalMs);
+
+  // Evitar que el temporizador bloquee el cierre limpio del proceso
+  backupIntervalHandle.unref();
+}
+
+export function stopScheduledBackups(): void {
+  if (backupIntervalHandle) {
+    clearInterval(backupIntervalHandle);
+    backupIntervalHandle = null;
+  }
 }

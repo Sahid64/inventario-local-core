@@ -2,13 +2,57 @@
   "name": "@inventario-local/desktop",
   "version": "1.0.0",
   "private": true,
-  "description": "Contenedor de escritorio nativo Tauri para Sistema de Inventario Local White-Label",
+  "description": "Aplicación de escritorio 100% offline (Electron) para Sistema de Inventario Local White-Label",
+  "main": "electron/main.cjs",
   "scripts": {
-    "tauri": "tauri",
-    "dev": "tauri dev",
-    "build": "tauri build"
+    "dev": "electron .",
+    "prepare:bundle": "node scripts/prepare-bundle.mjs",
+    "build": "node scripts/prepare-bundle.mjs && electron-builder",
+    "build:dir": "node scripts/prepare-bundle.mjs && electron-builder --dir"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.1.0"
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.inventariolocal.core",
+    "productName": "Inventario Local",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources-bundle/frontend",
+        "to": "frontend"
+      },
+      {
+        "from": "resources-bundle/backend",
+        "to": "backend"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "mac": {
+      "target": ["dmg"]
+    },
+    "linux": {
+      "target": ["AppImage"]
+    }
   }
 }
