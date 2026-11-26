@@ -10,6 +10,8 @@ let mainWindow = null;
 let backendProcess = null;
 let isQuitting = false;
 
+app.setName('Inventario Local');
+
 // Evitar múltiples instancias simultáneas sobre la misma base de datos SQLite
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {

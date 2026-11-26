@@ -2,6 +2,7 @@
   "name": "@inventario-local/desktop",
   "version": "1.0.0",
   "private": true,
+  "author": "Inventario Local",
   "description": "Aplicación de escritorio 100% offline (Electron) para Sistema de Inventario Local White-Label",
   "main": "electron/main.cjs",
   "scripts": {
@@ -11,12 +12,14 @@
     "build:dir": "node scripts/prepare-bundle.mjs && electron-builder --dir"
   },
   "devDependencies": {
-    "electron": "^33.2.0",
+    "electron": "33.4.11",
     "electron-builder": "^25.1.8"
   },
   "build": {
     "appId": "com.inventariolocal.core",
     "productName": "Inventario Local",
+    "electronVersion": "33.4.11",
+    "npmRebuild": false,
     "directories": {
       "output": "release"
     },
@@ -35,6 +38,7 @@
       }
     ],
     "win": {
+      "signAndEditExecutable": false,
       "target": [
         {
           "target": "nsis",
