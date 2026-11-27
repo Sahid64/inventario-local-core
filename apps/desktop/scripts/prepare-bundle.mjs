@@ -11,45 +11,67 @@ const bundleRoot = path.join(desktopRoot, 'resources-bundle');
 const bundleFrontend = path.join(bundleRoot, 'frontend');
 const bundleBackend = path.join(bundleRoot, 'backend');
 
-function copyDir(src, dest) {
-  fs.mkdirSync(dest, { recursive: true });
-  fs.cpSync(src, dest, { recursive: true, force: true });
+const IGNORED_DIRS = new Set(['test', 'tests', '__tests__', 'docs', 'doc', 'example', 'examples', '.github']);
+const IGNORED_EXTS = new Set(['.map', '.ts', '.mts', '.cts', '.md', '.markdown']);
+
+function shouldCopy(srcPath) {
+  const name = path.basename(srcPath);
+  const stat = fs.lstatSync(srcPath);
+
+  if (stat.isDirectory()) {
+    // No copiar carpetas de código fuente TypeScript ni pruebas dentro de paquetes
+    if (IGNORED_DIRS.has(name.toLowerCase())) return false;
+    if (name === 'src' && srcPath.includes('@inventario-local')) return false;
+    return true;
+  }
+
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.d.ts') || lower.endsWith('.d.mts') || lower.endsWith('.d.cts')) return false;
+  const ext = path.extname(lower);
+  if (IGNORED_EXTS.has(ext)) return false;
+
+  return true;
 }
 
-console.log('[Desktop Bundle] Preparando recursos offline...');
+function copyFiltered(src, dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  fs.cpSync(src, dest, {
+    recursive: true,
+    force: true,
+    filter: (s) => shouldCopy(s),
+  });
+}
+
+console.log('[Desktop Bundle] Preparando recursos limpios para app.asar...');
 fs.rmSync(bundleRoot, { recursive: true, force: true });
 fs.mkdirSync(bundleFrontend, { recursive: true });
 fs.mkdirSync(bundleBackend, { recursive: true });
 
-// 1. Frontend compilado
+// 1. Frontend compilado (sin sourcemaps)
 const frontendDist = path.join(repoRoot, 'apps', 'frontend', 'dist');
 if (!fs.existsSync(frontendDist)) {
   throw new Error(`Falta ${frontendDist}. Ejecuta "npm run build" antes de empaquetar.`);
 }
-copyDir(frontendDist, bundleFrontend);
+copyFiltered(frontendDist, bundleFrontend);
 
-// 2. Backend compilado + Prisma + DB plantilla
+// 2. Backend compilado (solo JS compilado, sin .map ni schema.prisma visible)
 const backendRoot = path.join(repoRoot, 'apps', 'backend');
 const backendDist = path.join(backendRoot, 'dist');
 if (!fs.existsSync(backendDist)) {
   throw new Error(`Falta ${backendDist}. Ejecuta "npm run build" antes de empaquetar.`);
 }
-copyDir(backendDist, path.join(bundleBackend, 'dist'));
-fs.copyFileSync(path.join(backendRoot, 'package.json'), path.join(bundleBackend, 'package.json'));
+copyFiltered(backendDist, path.join(bundleBackend, 'dist'));
 
-const prismaDest = path.join(bundleBackend, 'prisma');
-fs.mkdirSync(prismaDest, { recursive: true });
-fs.copyFileSync(
-  path.join(backendRoot, 'prisma', 'schema.prisma'),
-  path.join(prismaDest, 'schema.prisma')
-);
-
+// Base de datos plantilla inicial (empaquetada dentro del asar)
 const templateDb = path.join(backendRoot, 'prisma', 'inventario_local.db');
-if (fs.existsSync(templateDb)) {
-  fs.copyFileSync(templateDb, path.join(prismaDest, 'inventario_local.db'));
+if (!fs.existsSync(templateDb) || fs.statSync(templateDb).size === 0) {
+  throw new Error(
+    `Falta la base de datos semilla válida en ${templateDb}. Ejecuta "npm run db:setup" primero.`
+  );
 }
+fs.copyFileSync(templateDb, path.join(bundleBackend, 'seed.db'));
 
-// 3. Dependencias de ejecución del backend (hoisted node_modules + @inventario-local/shared)
+// 3. Dependencias estrictas de producción del backend (sin fuentes ni docs)
 const rootNodeModules = path.join(repoRoot, 'node_modules');
 const destNodeModules = path.join(bundleBackend, 'node_modules');
 fs.mkdirSync(destNodeModules, { recursive: true });
@@ -58,7 +80,6 @@ const backendPkg = JSON.parse(
   fs.readFileSync(path.join(backendRoot, 'package.json'), 'utf8')
 );
 
-// Recolectar dependencias recursivas de producción del backend
 const visited = new Set();
 const queue = Object.keys(backendPkg.dependencies ?? {});
 
@@ -72,7 +93,7 @@ while (queue.length > 0) {
 
   const realSrcDir = fs.realpathSync(srcPkgDir);
   const destPkgDir = path.join(destNodeModules, pkgName);
-  copyDir(realSrcDir, destPkgDir);
+  copyFiltered(realSrcDir, destPkgDir);
 
   const pkgJsonPath = path.join(realSrcDir, 'package.json');
   if (fs.existsSync(pkgJsonPath)) {
@@ -86,9 +107,9 @@ while (queue.length > 0) {
 // Copiar cliente Prisma generado (.prisma)
 const dotPrismaSrc = path.join(rootNodeModules, '.prisma');
 if (fs.existsSync(dotPrismaSrc)) {
-  copyDir(dotPrismaSrc, path.join(destNodeModules, '.prisma'));
+  copyFiltered(dotPrismaSrc, path.join(destNodeModules, '.prisma'));
 }
 
 console.log(
-  `[Desktop Bundle] Recursos listos en ${bundleRoot} (${visited.size} paquetes de backend incluidos).`
+  `[Desktop Bundle] Recursos empaquetables listos en ${bundleRoot} (${visited.size} dependencias mínimas, sin archivos de repositorio ni sourcemaps).`
 );

@@ -20,22 +20,17 @@
     "productName": "Inventario Local",
     "electronVersion": "33.4.11",
     "npmRebuild": false,
+    "asar": true,
+    "asarUnpack": [
+      "resources-bundle/backend/node_modules/.prisma/client/*.node"
+    ],
     "directories": {
       "output": "release"
     },
     "files": [
       "electron/**/*",
+      "resources-bundle/**/*",
       "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "resources-bundle/frontend",
-        "to": "frontend"
-      },
-      {
-        "from": "resources-bundle/backend",
-        "to": "backend"
-      }
     ],
     "win": {
       "signAndEditExecutable": false,

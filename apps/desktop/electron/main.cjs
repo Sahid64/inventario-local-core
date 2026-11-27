@@ -61,6 +61,10 @@ function waitForHealth(port, timeoutMs = 25000) {
     };
 
     const retry = () => {
+      if (backendExitError) {
+        reject(backendExitError);
+        return;
+      }
       if (Date.now() - startedAt >= timeoutMs) {
         reject(new Error('El servidor backend local no respondió a tiempo en /api/v1/health.'));
         return;
@@ -75,8 +79,8 @@ function waitForHealth(port, timeoutMs = 25000) {
 function resolvePaths() {
   if (app.isPackaged) {
     return {
-      backendRoot: path.join(process.resourcesPath, 'backend'),
-      frontendIndex: path.join(process.resourcesPath, 'frontend', 'index.html'),
+      backendRoot: path.join(__dirname, '..', 'resources-bundle', 'backend'),
+      frontendIndex: path.join(__dirname, '..', 'resources-bundle', 'frontend', 'index.html'),
     };
   }
 
@@ -90,15 +94,21 @@ function resolvePaths() {
 function ensureInitialDatabase(appDataDir, backendRoot) {
   fs.mkdirSync(appDataDir, { recursive: true });
   const targetDb = path.join(appDataDir, 'inventario_local.db');
-  if (fs.existsSync(targetDb)) {
+  if (fs.existsSync(targetDb) && fs.statSync(targetDb).size > 0) {
     return;
   }
 
-  const templateDb = path.join(backendRoot, 'prisma', 'inventario_local.db');
+  const packagedSeed = path.join(backendRoot, 'seed.db');
+  const devSeed = path.join(backendRoot, 'prisma', 'inventario_local.db');
+  const templateDb = fs.existsSync(packagedSeed) ? packagedSeed : devSeed;
+
   if (fs.existsSync(templateDb)) {
     fs.copyFileSync(templateDb, targetDb);
   }
 }
+
+let backendExitError = null;
+let backendLogStream = null;
 
 function startBackend(port, appDataDir, appSecret, backendRoot) {
   const serverEntry = path.join(backendRoot, 'dist', 'server.js');
@@ -108,6 +118,14 @@ function startBackend(port, appDataDir, appSecret, backendRoot) {
     );
   }
 
+  const logsDir = path.join(appDataDir, 'logs');
+  fs.mkdirSync(logsDir, { recursive: true });
+  backendLogStream = fs.createWriteStream(path.join(logsDir, 'backend.log'), { flags: 'a' });
+  backendLogStream.write(`\n--- Arranque ${new Date().toISOString()} (port=${port}) ---\n`);
+
+  backendExitError = null;
+  const dbFilePath = path.join(appDataDir, 'inventario_local.db');
+
   const envVars = {
     ...process.env,
     ELECTRON_RUN_AS_NODE: '1',
@@ -115,26 +133,62 @@ function startBackend(port, appDataDir, appSecret, backendRoot) {
     HOST: '127.0.0.1',
     PORT: String(port),
     APP_DATA_DIR: appDataDir,
+    DB_FILE_PATH: dbFilePath,
+    DATABASE_URL: `file:${dbFilePath}`,
     APP_SECRET: appSecret,
   };
 
+  if (app.isPackaged) {
+    const unpackedClientDir = path.join(
+      process.resourcesPath,
+      'app.asar.unpacked',
+      'resources-bundle',
+      'backend',
+      'node_modules',
+      '.prisma',
+      'client'
+    );
+    if (fs.existsSync(unpackedClientDir)) {
+      const engineFile = fs
+        .readdirSync(unpackedClientDir)
+        .find((f) => f.includes('query_engine') && f.endsWith('.node'));
+      if (engineFile) {
+        envVars.PRISMA_QUERY_ENGINE_LIBRARY = path.join(unpackedClientDir, engineFile);
+      }
+    }
+  }
+
+  let stderrTail = '';
+
   backendProcess = spawn(process.execPath, [serverEntry], {
-    cwd: backendRoot,
+    cwd: appDataDir,
     env: envVars,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
 
   backendProcess.stdout?.on('data', (chunk) => {
-    console.log(`[Backend] ${chunk.toString().trim()}`);
+    const text = chunk.toString();
+    backendLogStream?.write(text);
+    console.log(`[Backend] ${text.trim()}`);
   });
 
   backendProcess.stderr?.on('data', (chunk) => {
-    console.error(`[Backend ERR] ${chunk.toString().trim()}`);
+    const text = chunk.toString();
+    stderrTail = (stderrTail + text).slice(-2000);
+    backendLogStream?.write(`[ERR] ${text}`);
+    console.error(`[Backend ERR] ${text.trim()}`);
   });
 
   backendProcess.on('exit', (code, signal) => {
-    console.log(`[Backend] Proceso finalizado (code=${code}, signal=${signal})`);
+    const msg = `[Backend] Proceso finalizado (code=${code}, signal=${signal})`;
+    backendLogStream?.write(`${msg}\n`);
+    console.log(msg);
+    if (code && code !== 0 && !isQuitting) {
+      backendExitError = new Error(
+        `El backend local se cerró inesperadamente (código ${code}).\n${stderrTail}`
+      );
+    }
     backendProcess = null;
   });
 }
@@ -144,6 +198,8 @@ function stopBackend() {
 
   const proc = backendProcess;
   backendProcess = null;
+  backendLogStream?.end();
+  backendLogStream = null;
 
   try {
     proc.kill('SIGTERM');
@@ -181,6 +237,7 @@ async function createMainWindow(port, appSecret, frontendIndex) {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
+      devTools: !app.isPackaged,
       sandbox: false,
       additionalArguments: [
         `--api-url=${apiUrl}`,
